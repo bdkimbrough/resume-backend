@@ -15,8 +15,8 @@ import java.util.List;
 public interface CertificationsService {
 
     @GenIgnore
-    static CertificationsService create() {
-        return new CertificationsServiceImpl();
+    static CertificationsService create(Vertx vertx) {
+        return new CertificationsServiceImpl(vertx);
     }
 
     @GenIgnore

@@ -3,10 +3,8 @@ package net.thekimbroughs.certifications;
 import io.vertx.codegen.annotations.DataObject;
 import io.vertx.core.json.JsonObject;
 
-import java.util.List;
-
 @DataObject(generateConverter = true)
-public class Certification {
+public class Certification implements JsonBasedObject<Certification> {
 
     private String id;
     private String title;
@@ -62,5 +60,9 @@ public class Certification {
         JsonObject json = new JsonObject();
         CertificationConverter.toJson(this, json);
         return json;
+    }
+
+    public static Certification fromJson(JsonObject json, Certification certification) {
+        CertificationConverter.fromJson(json, certification);
     }
 }

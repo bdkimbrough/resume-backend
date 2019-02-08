@@ -69,4 +69,8 @@ public class Skill {
     public String toString() {
         return "Skill: " + toJson().encodePrettily();
     }
+
+    public static void fromJson(JsonObject json, Skill certification) {
+        SkillConverter.fromJson(json, certification);
+    }
 }

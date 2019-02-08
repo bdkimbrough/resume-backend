@@ -16,8 +16,8 @@ public interface PositionsService {
 
 
     @GenIgnore
-    static PositionsService create() {
-        return new PositionsServiceImpl();
+    static PositionsService create(Vertx vertx) {
+        return new PositionsServiceImpl(vertx);
     }
 
     @GenIgnore

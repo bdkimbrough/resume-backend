@@ -7,7 +7,7 @@ public class PositionsServiceDeployer extends AbstractVerticle {
 
     @Override
     public void start() {
-        PositionsService skillsService = PositionsService.create();
+        PositionsService skillsService = PositionsService.create(vertx);
 
         new ServiceBinder(vertx.getDelegate())
                 .setAddress(PositionsService.getAddress())

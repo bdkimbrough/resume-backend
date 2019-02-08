@@ -1,7 +1,6 @@
 package net.thekimbroughs;
 
 import io.reactivex.Completable;
-import io.reactivex.Flowable;
 import io.reactivex.disposables.Disposable;
 import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonArray;
@@ -27,8 +26,17 @@ import net.thekimbroughs.skills.reactivex.SkillsService;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static io.vertx.core.http.HttpHeaders.CONTENT_TYPE;
+import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
 
 public class MainVerticle extends AbstractVerticle {
+
+    private static final String SKILLS = "/skills";
+    private static final String CERTIFICATIONS = "/certifications";
+    private static final String POSITIONS = "/positions";
+    private static final String STAR = "/*";
+    private static final String ID = "/:id";
+    private static final String NOTIFICATIONS = "/notifications" + STAR;
+    private static final String PATH_ID = "id";
 
     @Override
     public void start(Future<Void> startFut) {
@@ -50,7 +58,6 @@ public class MainVerticle extends AbstractVerticle {
                 .ignoreElement();
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
     private Router createRoutes() {
         Router router = Router.router(vertx);
 
@@ -67,183 +74,206 @@ public class MainVerticle extends AbstractVerticle {
         Router v1 = Router.router(vertx);
 
         addSkillsRoutes(v1);
-        addPostisionsRoutes(v1);
+        addPositionsRoutes(v1);
         addCertificationsRoutes(v1);
 
         rest.mountSubRouter("/v1", v1);
 
-        rest.mountSubRouter("/rest", rest);
+        router.mountSubRouter("/rest", rest);
+
+        Router sockjs = Router.router(vertx);
+
+        SockJSHandler certificationsNotificationsHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, false, net.thekimbroughs.certifications.CertificationsService.getAddress() + ".notifications"));
+        SockJSHandler certificationsServiceHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, true, net.thekimbroughs.certifications.CertificationsService.getAddress()));
+
+        sockjs.route(CERTIFICATIONS + NOTIFICATIONS).handler(certificationsNotificationsHandler);
+        sockjs.route(CERTIFICATIONS + STAR).handler(certificationsServiceHandler);
+
+        SockJSHandler positionsNotificationsHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, false, net.thekimbroughs.positions.PositionsService.getAddress() + ".notifications"));
+        SockJSHandler positionsServiceHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, true, net.thekimbroughs.positions.PositionsService.getAddress()));
+
+        sockjs.route(POSITIONS + NOTIFICATIONS).handler(positionsNotificationsHandler);
+        sockjs.route(POSITIONS + STAR).handler(positionsServiceHandler);
+
+        SockJSHandler skillsNotificationsHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, false, net.thekimbroughs.skills.SkillsService.getAddress() + ".notifications"));
+        SockJSHandler skillsServiceHandler = SockJSHandler.create(vertx)
+                .bridge(getBridgeOptions(true, true, net.thekimbroughs.skills.SkillsService.getAddress()));
+
+        sockjs.route(SKILLS + NOTIFICATIONS).handler(skillsNotificationsHandler);
+        sockjs.route(SKILLS + STAR).handler(skillsServiceHandler);
+
+        router.mountSubRouter("/sockjs", sockjs);
 
         return router;
     }
 
-    private void addSkillsRoutes(Router router) {
+    private BridgeOptions getBridgeOptions(boolean outboundPermitted, boolean inboundPermitted, String address) {
 
-        SkillsService skillsService = net.thekimbroughs.skills.SkillsService.createProxy(vertx);
-        router.get("/skills").handler(ctx -> {
-            Disposable sub = skillsService.rxGetAll().subscribe(
-                    skillList -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(new JsonArray(skillList).encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
+        BridgeOptions opt = new BridgeOptions();
 
-            setDisposeTimer(sub);
-        });
+        if (outboundPermitted) {
+            opt.addOutboundPermitted(new PermittedOptions().setAddress(address));
+        }
 
-        router.get("/skills/:id").handler(ctx -> {
-            Disposable sub = skillsService.rxGetById(ctx.pathParam("id")).subscribe(
-                    skill -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(skill.toJson().encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
+        if (inboundPermitted) {
+            opt.addInboundPermitted(new PermittedOptions().setAddress(address));
+        }
 
-            setDisposeTimer(sub);
-        });
-
-        router.post("/skills").handler(ctx -> {
-            Disposable sub = skillsService.rxCreateOne(new Skill(ctx.getBodyAsJson())).subscribe(
-                    skill -> ctx.response().setStatusCode(CREATED.code()).setStatusMessage(CREATED.reasonPhrase()).end(skill.toJson().encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.put("/skills/:id").handler(ctx -> {
-            Disposable sub = skillsService.rxUpdateOne(ctx.pathParam("id"), new Skill(ctx.getBodyAsJson())).subscribe(
-                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.delete("/skills/:id").handler(ctx -> {
-            Disposable sub = skillsService.rxDeleteOne(ctx.pathParam("id")).subscribe(
-                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        BridgeOptions opt = new BridgeOptions()
-                .addOutboundPermitted(new PermittedOptions().setAddress(net.thekimbroughs.skills.SkillsService.getAddress() + ".notifications"));
-        SockJSHandler sockJSHandler = SockJSHandler.create(vertx).bridge(opt);
-        router.route("/skills/notifications/*").handler(sockJSHandler);
+        return opt;
     }
 
-    private void addPostisionsRoutes(Router router) {
-
-        PositionsService positionsService = net.thekimbroughs.positions.PositionsService.createProxy(vertx);
-        router.get("/positions").handler(ctx -> {
-            Disposable sub = positionsService.rxGetAll().subscribe(
-                    positionList -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(new JsonArray(positionList).encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.get("/positions/:id").handler(ctx -> {
-            Disposable sub = positionsService.rxGetById(ctx.pathParam("id")).subscribe(
-                    position -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(position.toJson().encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.post("/positions").handler(ctx -> {
-            Disposable sub = positionsService.rxCreateOne(new Position(ctx.getBodyAsJson())).subscribe(
-                    position -> ctx.response().setStatusCode(CREATED.code()).setStatusMessage(CREATED.reasonPhrase()).end(position.toJson().encode()),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.put("/positions/:id").handler(ctx -> {
-            Disposable sub = positionsService.rxUpdateOne(ctx.pathParam("id"), new Position(ctx.getBodyAsJson())).subscribe(
-                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        router.delete("/positions/:id").handler(ctx -> {
-            Disposable sub = positionsService.rxDeleteOne(ctx.pathParam("id")).subscribe(
-                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
-                    throwable -> handleErrorResult(ctx, throwable)
-            );
-
-            setDisposeTimer(sub);
-        });
-
-        BridgeOptions opt = new BridgeOptions()
-                .addOutboundPermitted(new PermittedOptions().setAddress(net.thekimbroughs.positions.PositionsService.getAddress() + ".notifications"));
-        SockJSHandler sockJSHandler = SockJSHandler.create(vertx).bridge(opt);
-        router.route("/positions/notifications/*").handler(sockJSHandler);
-    }
-
+    @SuppressWarnings("Duplicates")
     private void addCertificationsRoutes(Router router) {
 
         CertificationsService certService = net.thekimbroughs.certifications.CertificationsService.createProxy(vertx);
-        router.get("/certifications").handler(ctx -> {
+        router.get(CERTIFICATIONS).handler(ctx -> {
             Disposable sub = certService.rxGetAll().subscribe(
                     certificationList -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(new JsonArray(certificationList).encode()),
                     throwable -> handleErrorResult(ctx, throwable)
             );
 
-            setDisposeTimer(sub);
+            setDisposeTimer(vertx, sub);
         });
 
-        router.get("/certifications/:id").handler(ctx -> {
-            Disposable sub = certService.rxGetById(ctx.pathParam("id")).subscribe(
+        router.get(CERTIFICATIONS + ID).handler(ctx -> {
+            Disposable sub = certService.rxGetById(ctx.pathParam(PATH_ID)).subscribe(
                     certification -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(certification.toJson().encode()),
                     throwable -> handleErrorResult(ctx, throwable)
             );
 
-            setDisposeTimer(sub);
+            setDisposeTimer(vertx, sub);
         });
 
-        router.post("/certifications").handler(ctx -> {
+        router.post(CERTIFICATIONS).handler(ctx -> {
             Disposable sub = certService.rxCreateOne(new Certification(ctx.getBodyAsJson())).subscribe(
                     certification -> ctx.response().setStatusCode(CREATED.code()).setStatusMessage(CREATED.reasonPhrase()).end(certification.toJson().encode()),
                     throwable -> handleErrorResult(ctx, throwable)
             );
 
-            setDisposeTimer(sub);
+            setDisposeTimer(vertx, sub);
         });
 
-        router.put("/certifications/:id").handler(ctx -> {
-            Disposable sub = certService.rxUpdateOne(ctx.pathParam("id"), new Certification(ctx.getBodyAsJson())).subscribe(
+        router.put(CERTIFICATIONS + ID).handler(ctx -> {
+            Disposable sub = certService.rxUpdateOne(ctx.pathParam(PATH_ID), new Certification(ctx.getBodyAsJson())).subscribe(
                     () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
                     throwable -> handleErrorResult(ctx, throwable)
             );
 
-            setDisposeTimer(sub);
+            setDisposeTimer(vertx, sub);
         });
 
-        router.delete("/certifications/:id").handler(ctx -> {
-            Disposable sub = certService.rxDeleteOne(ctx.pathParam("id")).subscribe(
+        router.delete(CERTIFICATIONS + ID).handler(ctx -> {
+            Disposable sub = certService.rxDeleteOne(ctx.pathParam(PATH_ID)).subscribe(
                     () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
                     throwable -> handleErrorResult(ctx, throwable)
             );
 
-            setDisposeTimer(sub);
+            setDisposeTimer(vertx, sub);
         });
-
-        BridgeOptions opt = new BridgeOptions()
-                .addOutboundPermitted(new PermittedOptions().setAddress(net.thekimbroughs.certifications.CertificationsService.getAddress() + ".notifications"));
-        SockJSHandler sockJSHandler = SockJSHandler.create(vertx).bridge(opt);
-        router.route("/certifications/notifications/*").handler(sockJSHandler);
     }
 
-    private void setDisposeTimer(Disposable sub) {
-        vertx.setTimer(20000, res -> {
-            if (!sub.isDisposed()) {
-                sub.dispose();
-            }
+    @SuppressWarnings("Duplicates")
+    private void addPositionsRoutes(Router router) {
+
+        PositionsService positionsService = net.thekimbroughs.positions.PositionsService.createProxy(vertx);
+        router.get(POSITIONS).handler(ctx -> {
+            Disposable sub = positionsService.rxGetAll().subscribe(
+                    positionList -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(new JsonArray(positionList).encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.get(POSITIONS + ID).handler(ctx -> {
+            Disposable sub = positionsService.rxGetById(ctx.pathParam(PATH_ID)).subscribe(
+                    position -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(position.toJson().encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.post(POSITIONS).handler(ctx -> {
+            Disposable sub = positionsService.rxCreateOne(new Position(ctx.getBodyAsJson())).subscribe(
+                    position -> ctx.response().setStatusCode(CREATED.code()).setStatusMessage(CREATED.reasonPhrase()).end(position.toJson().encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.put(POSITIONS + ID).handler(ctx -> {
+            Disposable sub = positionsService.rxUpdateOne(ctx.pathParam(PATH_ID), new Position(ctx.getBodyAsJson())).subscribe(
+                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.delete(POSITIONS + ID).handler(ctx -> {
+            Disposable sub = positionsService.rxDeleteOne(ctx.pathParam(PATH_ID)).subscribe(
+                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+    }
+
+    @SuppressWarnings("Duplicates")
+    private void addSkillsRoutes(Router router) {
+
+        SkillsService skillsService = net.thekimbroughs.skills.SkillsService.createProxy(vertx);
+        router.get(SKILLS).handler(ctx -> {
+            Disposable sub = skillsService.rxGetAll().subscribe(
+                    skillList -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(new JsonArray(skillList).encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.get(SKILLS + ID).handler(ctx -> {
+            Disposable sub = skillsService.rxGetById(ctx.pathParam(PATH_ID)).subscribe(
+                    skill -> ctx.response().setStatusCode(OK.code()).setStatusMessage(OK.reasonPhrase()).end(skill.toJson().encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.post(SKILLS).handler(ctx -> {
+            Disposable sub = skillsService.rxCreateOne(new Skill(ctx.getBodyAsJson())).subscribe(
+                    skill -> ctx.response().setStatusCode(CREATED.code()).setStatusMessage(CREATED.reasonPhrase()).end(skill.toJson().encode()),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.put(SKILLS + ID).handler(ctx -> {
+            Disposable sub = skillsService.rxUpdateOne(ctx.pathParam(PATH_ID), new Skill(ctx.getBodyAsJson())).subscribe(
+                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
+        });
+
+        router.delete(SKILLS + ID).handler(ctx -> {
+            Disposable sub = skillsService.rxDeleteOne(ctx.pathParam(PATH_ID)).subscribe(
+                    () -> ctx.response().setStatusCode(ACCEPTED.code()).setStatusMessage(ACCEPTED.reasonPhrase()).end(),
+                    throwable -> handleErrorResult(ctx, throwable)
+            );
+
+            setDisposeTimer(vertx, sub);
         });
     }
 

@@ -15,8 +15,8 @@ import java.util.List;
 public interface SkillsService {
 
     @GenIgnore
-    static SkillsService create() {
-        return new SkillsServiceImpl();
+    static SkillsService create(Vertx vertx) {
+        return new SkillsServiceImpl(vertx);
     }
 
     @GenIgnore

@@ -72,4 +72,8 @@ public class Position {
         PositionConverter.toJson(this, json);
         return json;
     }
+
+    public static void fromJson(JsonObject json, Position certification) {
+        PositionConverter.fromJson(json, certification);
+    }
 }
