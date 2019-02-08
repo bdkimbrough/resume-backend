@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
 
+@SuppressWarnings("Duplicates")
 public class CertificationsServiceImpl implements CertificationsService {
 
     public static final String CERTIFICATIONS_AGGREGATE = "certifications";

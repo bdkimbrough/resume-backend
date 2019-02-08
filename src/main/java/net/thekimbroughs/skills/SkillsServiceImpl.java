@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
 
+@SuppressWarnings("Duplicates")
 public class SkillsServiceImpl implements SkillsService {
 
     public static final String SKILLS_AGGREGATE = "skills";

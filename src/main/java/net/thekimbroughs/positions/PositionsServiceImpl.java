@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 
 import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
 
+@SuppressWarnings("Duplicates")
 public class PositionsServiceImpl implements PositionsService {
 
     public static final String POSITIONS_AGGREGATE = "positions";
