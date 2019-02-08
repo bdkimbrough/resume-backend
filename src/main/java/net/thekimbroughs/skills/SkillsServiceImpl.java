@@ -4,6 +4,7 @@ import io.reactivex.disposables.Disposable;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
+import io.vertx.core.json.JsonObject;
 import io.vertx.reactivex.core.Vertx;
 import io.vertx.reactivex.ext.jdbc.JDBCClient;
 import io.vertx.serviceproxy.ServiceException;
@@ -12,7 +13,8 @@ import net.thekimbroughs.util.PostgresDatabaseUtil;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
+import static net.thekimbroughs.util.CommonUtil.*;
+import static net.thekimbroughs.util.NotificationTypes.*;
 
 @SuppressWarnings("Duplicates")
 public class SkillsServiceImpl implements SkillsService {
@@ -57,7 +59,18 @@ public class SkillsServiceImpl implements SkillsService {
     @Override
     public void createOne(Skill skill, Handler<AsyncResult<Skill>> handler) {
         Disposable sub = PostgresDatabaseUtil.createOne(sqlClient, SKILLS_AGGREGATE, skill.toJson()).subscribe(
-                updateResult -> handler.handle(Future.succeededFuture(new Skill(updateResult.toJson()))),
+                updateResult -> {
+                    JsonObject result = updateResult.toJson();
+
+                    Skill temp = new Skill(result.getJsonObject("data")
+                            .put("id", result.getString("id"))
+                            .put("created", result.getString("created", ""))
+                            .put("modified", result.getString("modified", ""))
+                    );
+                    handler.handle(Future.succeededFuture(temp));
+
+                    sendNotification(vertx, SkillsService.getAddress(), CREATE.name(), temp.getId());
+                },
                 throwable -> handler.handle(Future.failedFuture(throwable))
         );
 
@@ -67,7 +80,10 @@ public class SkillsServiceImpl implements SkillsService {
     @Override
     public void updateOne(String id, Skill skill, Handler<AsyncResult<Void>> handler) {
         Disposable sub = PostgresDatabaseUtil.updateOne(sqlClient, SKILLS_AGGREGATE, id, skill.toJson()).subscribe(
-                updateResult -> handler.handle(Future.succeededFuture()),
+                updateResult -> {
+                    handler.handle(Future.succeededFuture());
+                    sendNotification(vertx, SkillsService.getAddress(), UPDATE.name(), id);
+                },
                 throwable -> handler.handle(Future.failedFuture(throwable))
         );
 
@@ -77,7 +93,10 @@ public class SkillsServiceImpl implements SkillsService {
     @Override
     public void deleteOne(String id, Handler<AsyncResult<Void>> handler) {
         Disposable sub = PostgresDatabaseUtil.deleteOne(sqlClient, SKILLS_AGGREGATE, id).subscribe(
-                updateResult -> handler.handle(Future.succeededFuture()),
+                updateResult -> {
+                    handler.handle(Future.succeededFuture());
+                    sendNotification(vertx, SkillsService.getAddress(), DELETE.name(), id);
+                },
                 throwable -> handler.handle(Future.failedFuture(throwable))
         );
 

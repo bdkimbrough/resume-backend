@@ -26,7 +26,7 @@ import net.thekimbroughs.skills.reactivex.SkillsService;
 import static io.netty.handler.codec.http.HttpHeaderValues.APPLICATION_JSON;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static io.vertx.core.http.HttpHeaders.CONTENT_TYPE;
-import static net.thekimbroughs.util.DisposeUtil.setDisposeTimer;
+import static net.thekimbroughs.util.CommonUtil.setDisposeTimer;
 
 public class MainVerticle extends AbstractVerticle {
 
